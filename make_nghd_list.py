@@ -13,14 +13,11 @@ parser.add_argument('--source_files', nargs='+', default= ['nghd_bounds/austin.g
     help='All the neighborhood bounds files')
 args = parser.parse_args()
 
-CITY_NAME_MAPPING = {'austin': 'Austin', 'chicago': 'Chicago',
-        'houston': 'Houston', 'pgh': 'Pittsburgh', 'sf': 'San Francisco'}
-
 output = {}
 for file in args.source_files:
-    city_name = CITY_NAME_MAPPING[file.replace('nghd_bounds/', '').replace('.geojson', '')]
+    city_name = file.replace('nghd_bounds/', '').replace('.geojson', '')
     json_data = json.load(open(file))
-    nghd_list = [n['properties']['name'] for n in json_data['features']]
+    nghd_list = list(set([n['properties']['name'] for n in json_data['features']]))
     output[city_name] = sorted(nghd_list)
 json.dump(output, open(args.output_file, 'w'))
 
