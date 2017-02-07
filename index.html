@@ -8,7 +8,11 @@
     <title>Neighborhood Photo Sets</title>
 <style>
 .photos_column {
+  padding: 5px;
   border: 1px solid;
+}
+#user_number {
+  font-size: large;
 }
 </style>
 
@@ -31,7 +35,7 @@
       </div>
       <div class="row">
         <div class="col-md-12">
-          Thank you for your interest in this study. Please pick a neighborhood that you have lived in or are very familiar with. We will then give you two sets of photos; you simply select the one that you think better represents your neighborhood.
+          Thank you for your interest in this study. Please pick a neighborhood that you have lived in or are very familiar with. We will then give you two sets of photos; you simply select the one that you think better represents your neighborhood. Rate 15 pairs of photo sets to complete this HIT.
 
           <div>
             <select id="city_selector" onchange="update_nghd_selector()">
@@ -46,10 +50,11 @@
 
           <div>
             <select id="nghd_selector">
-              <option value="none">Select a neighborhood</option>
+              <option value="none">Select a neighborhood (select a city first)</option>
             </select>
           </div>
 
+          <div id="select_city_nghd_warning" style="color:red; display:none;">Please select a city and neighborhood</div>
           <div><button id="start_button" onclick="start()">Start</button></div>
         </div>
       </div>
@@ -57,28 +62,22 @@
 
     <div id="main" class="container-fluid" style="display:none;">
       <div class="row">
-        <div class="col-md-12">
-          <h1>Which set of photos better represents your neighborhood?</h1>
-        </div>
+        <div class="col-md-12"> <h1>Which set of photos better represents <span class="your_nghd"></span>?</h1> </div>
       </div>
       <div class="row">
         <div class="photos_column col-md-6">
-          Photos 1
-          <div>
-            <button id="group1_button" onclick="select_photos(1)">These photos represent my neighborhood better</button>
-          </div>
+          <h3>Photo Set 1</h3>
+          <div id="photos_1"> </div>
+          <button id="group1_button" onclick="select_photos(1)">These photos represent <span class="your_nghd"></span> better</button>
         </div>
         <div class="photos_column col-md-6">
-          Photos 2
-          <div>
-            <button id="group2_button" onclick="select_photos(2)">These photos represent my neighborhood better</button>
-          </div>
+          <h3>Photo Set 2</h3>
+          <div id="photos_2"> </div>
+          <button id="group2_button" onclick="select_photos(2)">These photos represent <span class="your_nghd"></span> better</button>
         </div>
       </div>
       <div class="row">
-        <div class="col-md-12">
-        <!-- Footer if necessary -->
-        </div>
+        <div class="col-md-12"><h3>Ratings completed: <span id="num_ratings_completed">0</span> / 15</h3></div>
       </div>
     </div>
 
@@ -86,7 +85,9 @@
       <div class="row">
         <div class="col-md-12">
           <h1>Thank you!</h1>
-          Thank you for participating in this study. Please enter this number into Mechanical Turk in order to receive credit for completing it.
+          Thank you for participating in this study. Please enter this number:
+          <div id="user_number"></div>
+          into Mechanical Turk in order to receive credit for completing this HIT.
         </div>
       </div>
     </div>
@@ -96,32 +97,86 @@
     <!-- Include all compiled plugins (below), or include individual files as needed -->
     <script src="js/bootstrap.min.js"></script>
   <script>
+    var selectedCity = ''
+    var selectedNghd = ''
+    var numCompleted = 0
+    var comparisonsToDo = [[0,1], [0,2], [0,3], [0,4], [0,5],
+      [1,2], [1,3], [1,4], [1,5], [2,3], [2,4], [2,5], [3,4], [3,5], [4,5]]
+    var userNumber = Math.floor(Math.random() * 1000000000)
+    var nghdList = {}
+    var urls = {} // e.g. {'pgh': {'Shadyside': {'twitter_random': ['www.twimg.com/...', ...]}}}
+    $.getJSON("data/nghd_list.json", function(json) {
+      nghdList = json
+    })
+    $.getJSON("data/urls.json", function(json) {
+      urls = json
+    })
+
     var update_nghd_selector = function() {
+      $("#nghd_selector").empty()
       var city = $("#city_selector").val()
       if (city === "none") {
         return
       } else {
-        console.log(city)
+        for (var i = 0; i < nghdList[city].length; i++) {
+          var nghd = nghdList[city][i]
+          $("#nghd_selector").append('<option value="' + nghd + '">'+ nghd + '</option>')
+        }
       }
     }
     var start = function() {
-
-      // console.log($("#city_selector").val())
+      selectedCity = $("#city_selector").val()
+      selectedNghd = $("#nghd_selector").val()
+      if (selectedCity === 'none' || selectedNghd === 'none') {
+        $("#select_city_nghd_warning").show()
+        console.log("Please select a city and neighborhood.")
+        return false
+      }
+      
+      numCompleted = 0
+      prepare_photos()
       $("#intro").hide()
       $("#main").show()
+      $(".your_nghd").text(selectedNghd)
       $("#end").hide()
     }
     var done = function() {
       $("#intro").hide()
       $("#main").hide()
+      $("#user_number").text(userNumber)
       $("#end").show()
     }
-    var prepare_photos = function(group1, group2) {
-      // group1 and group2 are variables like streetview_random, streetview_venues, etc.
-      console.log($("#city_selector").value())
+
+    // Types: 0 = twitter random, 1 = street view random, 2 = street view at
+    // venues, 3 = flickr random, 4 = flickr with only "outdoor" photos,
+    // 5 = flickr with TF-iDF-UF of some kind.
+    var get_urls = function(type) {
+      
+    }
+
+    var prepare_photos = function() {
+      var comparisonToDo = comparisonsToDo.splice(Math.floor(Math.random() * comparisonsToDo.length), 1)[0]
+      // splice also removes it from the list.
+      if (Math.random() > 0.5) {
+        firstSet = comparisonToDo[0]
+        secondSet = comparisonToDo[1]
+      } else {
+        firstSet = comparisonToDo[1]
+        secondSet = comparisonToDo[0]
+      }
+      // so now firstSet = 3 and secondSet = 2 or something.
+      
+
     }
     var select_photos = function(group_num) {
       console.log("you selected " + group_num)
+      numCompleted += 1
+      if (numCompleted >= 15) {
+        done()
+      } else {
+        $("#num_ratings_completed").text(numCompleted)
+        prepare_photos()
+      }
     }
     // $(document).ready(function() {})  
   </script>
