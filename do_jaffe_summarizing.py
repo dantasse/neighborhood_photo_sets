@@ -1,21 +1,28 @@
 #!/usr/bin/env python
 
 # Summarize photos in a city, a la Jaffe 2006. 
+# Hungarian clustering from Goldberger:
+# http://www.openu.ac.il/personal_sites/tamirtassa/download/journals/clustering.pdf
 
 import argparse, csv, collections, math, sys, pprint, numpy as np, random
 import matplotlib.pyplot as plt
+from haversine import haversine
 from munkres import Munkres, print_matrix # Hungarian clustering.
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--yfcc_file', default='data/pgh_yfcc100m.csv', help=' ')
+parser.add_argument('--t_param', type=int, default=7, help='T as in the \
+        Hungarian Clustering paper.')
+parser.add_argument('--plot', action='store_true', help='if set, plot the results.')
 args = parser.parse_args()
 
 # The one tricky parameter; roughly, min cluster size.
-T = 7
+T = args.t_param
 
 def dist(p1, p2):
     """ Euclidean distance between two (lat, lon) points. """
     # TODO should probably use haversine instead, welp.
-    return math.sqrt(math.pow(p1[0] - p2[0], 2) + math.pow(p1[1] - p2[1], 2))
+    # return math.sqrt(math.pow(p1[0] - p2[0], 2) + math.pow(p1[1] - p2[1], 2))
+    return haversine(p1, p2)
 
 def cluster_dist(c1, c2):
     """ Distance between 2 clusters, as Goldberger and Tassa describe. c1 and
@@ -44,8 +51,10 @@ def cluster_dist(c1, c2):
     return min_dist
 
 def make_clusters(indexes):
-    """ indexes = [(0, 48), (1, 71), ...]
+    """ Maybe this should be called make_cycles instead; whatever.
+    indexes = [(0, 48), (1, 71), ... (12, 0) ... (48, 73) ... (73, 12)...]
     clusters = [[0, 48, 73, 12], [1, 71], [2, 19, 92], ...] """
+    print indexes
     clusters = []
     indexes_dict = {a: b for a, b in indexes}
     while len(indexes_dict) > 0:
@@ -54,6 +63,7 @@ def make_clusters(indexes):
         pt2 = indexes_dict.pop(pt1)
         if pt1 == pt2: # cycle of size 1
             new_cluster.append(pt1)
+            clusters.append(new_cluster)
             continue
         new_cluster.append(pt1)
         new_cluster.append(pt2)
@@ -93,7 +103,7 @@ def flatten(lol):
 
 def is_all_singletons(cycles):
     for cycle in cycles:
-        if cycle[0] != cycle[1]:
+        if len(cycle) > 1:
             return False
     return True
 
@@ -114,26 +124,28 @@ while True:
     for cluster_cycle in cluster_indexes:
         new_clusters.append(flatten([clusters[i][c] for c in cluster_cycle]))
 
-    if is_all_singletons(new_clusters):
+    print "Finished a round, this many clusters: ", len(new_clusters)
+    print [len(a) for a in new_clusters]
+    if is_all_singletons(cluster_indexes):
         break
     i += 1
     clusters[i] = new_clusters
 
 final_clusters = clusters[len(clusters)-1]
 
+if args.plot:
+    ## Just plotting this stuff.
+    xs = []
+    ys = []
+    colors = []
+    ctr = 0
+    for cluster in final_clusters:
+        ctr += 1
+        color = ctr
+        for pt in cluster:
+            xs.append(pt[0])#* 100 + random.random())
+            ys.append(pt[1])#* 100 + random.random())
+            colors.append(color)
 
-## Just plotting this stuff.
-xs = []
-ys = []
-colors = []
-ctr = 0
-for cluster in final_clusters:
-    ctr += 1
-    color = ctr
-    for pt in cluster:
-        xs.append(pt[0])#* 100 + random.random())
-        ys.append(pt[1])#* 100 + random.random())
-        colors.append(color)
-
-plt.scatter(xs, ys, c=colors)
-plt.show()
+    plt.scatter(xs, ys, c=colors)
+    plt.show()
