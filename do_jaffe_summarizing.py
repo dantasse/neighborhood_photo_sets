@@ -8,6 +8,7 @@ import argparse, csv, collections, math, sys, random, numpy as np
 import matplotlib.pyplot as plt
 from haversine import haversine
 from munkres import Munkres # Hungarian clustering.
+# import hungarian, LAPJV
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--yfcc_file', default='data/pgh_yfcc100m.csv', help=' ')
 parser.add_argument('--t_param', type=int, default=7, help='T as in the \
@@ -15,6 +16,10 @@ parser.add_argument('--t_param', type=int, default=7, help='T as in the \
 parser.add_argument('--w_param', type=float, default=0.1, help='w as in the \
         Jaffe paper; what makes a cluster "prominent".')
 parser.add_argument('--plot', action='store_true', help='if set, plot the results.')
+parser.add_argument('--max_photos_per_nghd', type=int, default=1000, help='If there\
+        are more than this many photos per nghd, only pick a random subset of\
+        them (so that it is reasonably computable.) 0 = no limit.')
+parser.add_argument('--output_file', default='jaffe_photos.csv', help=' ')
 args = parser.parse_args()
 
 # The one tricky parameter; roughly, min cluster size.
@@ -244,55 +249,81 @@ class Cluster:
         return order
 
 munkres = Munkres()
-
 lines = [line for line in csv.reader(open(args.yfcc_file))]
-for line in lines:
-    line[2] = float(line[2])
-    line[3] = float(line[3])
-
-clusters = collections.defaultdict(list) # dict of iteration number -> cluster list.
-clusters[0] = [Cluster(subclusters=None, photos=[photo]) for photo in lines]
-i = 0
-while True:
-    new_clusters = []
-    dist_matrix = build_distance_matrix(clusters[i])
-    indexes = munkres.compute(dist_matrix)
-    cluster_cycle_indexes = make_cluster_cycles(indexes)
-
-    for cluster_cycle in cluster_cycle_indexes:
-        new_cluster = Cluster(subclusters=[clusters[i][c] for c in cluster_cycle], photos=[])
-        new_clusters.append(new_cluster)
-
-    print "Finished a round, this many clusters: ", len(new_clusters)
-    if is_all_singletons(cluster_cycle_indexes):
-        break
-    i += 1
-    clusters[i] = new_clusters
-
-final_clusters = clusters[len(clusters)-1]
-
-global_tag_counts = collections.Counter()
+nghd_photos = collections.defaultdict(list)
 for photo in lines:
-    tag_set = photo[5].strip('"').split(',')
-    global_tag_counts.update([tag for tag in tag_set if is_ok_tag(tag)])
-global_photog_counts = collections.Counter([photo[1] for photo in lines])
+    photo[2] = float(photo[2])
+    photo[3] = float(photo[3])
+    nghd_photos[photo[8]].append(photo)
 
-supercluster = Cluster(subclusters=final_clusters, photos=[])
-print supercluster.photo_order(global_tag_counts, global_photog_counts)
+writer = csv.writer(open(args.output_file, 'w'))
 
-if args.plot:
-    ## Just plotting this stuff.
-    xs = []
-    ys = []
-    colors = []
-    ctr = 0
-    for cluster in final_clusters:
-        ctr += 1
-        color = ctr
-        for pt in cluster.all_points():
-            xs.append(pt[0])
-            ys.append(pt[1])
-            colors.append(color)
+for nghd, photos in nghd_photos.items():
+    if nghd == "None" or nghd == 'Mt. Oliver': # TODO undo this
+        continue
+    if args.max_photos_per_nghd > 0 and len(photos) > args.max_photos_per_nghd:
+        photos = random.sample(photos, args.max_photos_per_nghd) # TODO making this computable :-/
+    print "Processing ", nghd, ", this many photos: ", str(len(photos))
 
-    plt.scatter(xs, ys, c=colors)
-    plt.show()
+    clusters = collections.defaultdict(list) # dict of iteration number -> cluster list.
+    clusters[0] = [Cluster(subclusters=None, photos=[photo]) for photo in photos]
+    i = 0
+    while True:
+        new_clusters = []
+        dist_matrix = build_distance_matrix(clusters[i])
+        dist_matrix = np.array(dist_matrix)
+
+        indexes = munkres.compute(dist_matrix)
+        # OR
+        # row_col_indexes = hungarian.lap(dist_matrix)
+        # indexes = zip(row_col_indexes[0], row_col_indexes[1])
+        # "segmentation fault" - eh.
+        # OR
+        # row_col_indexes = LAPJV.lap(dist_matrix)
+        # print row_col_indexes[1]
+        # indexes = zip(row_col_indexes[0], row_col_indexes[1])
+        # "array is too big" - eh.
+
+        print indexes
+        cluster_cycle_indexes = make_cluster_cycles(indexes)
+
+        for cluster_cycle in cluster_cycle_indexes:
+            new_cluster = Cluster(subclusters=[clusters[i][c] for c in cluster_cycle], photos=[])
+            new_clusters.append(new_cluster)
+
+        print "Finished a round, this many clusters: ", len(new_clusters)
+        if is_all_singletons(cluster_cycle_indexes):
+            break
+        i += 1
+        clusters[i] = new_clusters
+
+    final_clusters = clusters[len(clusters)-1]
+
+    global_tag_counts = collections.Counter()
+    for photo in photos:
+        tag_set = photo[5].strip('"').split(',')
+        global_tag_counts.update([tag for tag in tag_set if is_ok_tag(tag)])
+    global_photog_counts = collections.Counter([photo[1] for photo in photos])
+
+    supercluster = Cluster(subclusters=final_clusters, photos=[])
+    order = supercluster.photo_order(global_tag_counts, global_photog_counts)
+    for row in order[0:20]:
+        writer.writerow(row)
+    
+
+    if args.plot:
+        ## Just plotting this stuff.
+        xs = []
+        ys = []
+        colors = []
+        ctr = 0
+        for cluster in final_clusters:
+            ctr += 1
+            color = ctr
+            for pt in cluster.all_points():
+                xs.append(pt[0])
+                ys.append(pt[1])
+                colors.append(color)
+
+        plt.scatter(xs, ys, c=colors)
+        plt.show()
