@@ -12,6 +12,8 @@ parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFo
 parser.add_argument('--yfcc_file', default='data/pgh_yfcc100m.csv', help=' ')
 parser.add_argument('--t_param', type=int, default=7, help='T as in the \
         Hungarian Clustering paper.')
+parser.add_argument('--w_param', type=float, default=0.1, help='w as in the \
+        Jaffe paper; what makes a cluster "prominent".')
 parser.add_argument('--plot', action='store_true', help='if set, plot the results.')
 args = parser.parse_args()
 
@@ -54,7 +56,6 @@ def cluster_dist(c1, c2):
 def make_cluster_cycles(indexes):
     """ indexes = [(0, 48), (1, 71), ... (12, 0) ... (48, 73) ... (73, 12)...]
     cycles = [[0, 48, 73, 12], [1, 71], [2, 19, 92], ...] """
-    print indexes
     cycles = []
     indexes_dict = {a: b for a, b in indexes}
     while len(indexes_dict) > 0:
@@ -124,6 +125,7 @@ class Cluster:
     def __init__(self, subclusters, photos):
         self.subclusters = subclusters
         self.photos = photos
+        self.w_param = args.w_param
 
     def all_points(self):
         if self.subclusters == None:
@@ -155,6 +157,9 @@ class Cluster:
         """ Just the score for this cluster, as in Jaffe et al. Need
         global_tag_counts to compute tf-idf."""
 
+        if len(self.all_photos()) == 0:
+            return 0
+
         # Ignore relevance
 
         # Tag-distinguishability
@@ -162,7 +167,6 @@ class Cluster:
         tag_counts = self.tag_counts()
         this_cluster_num_photos = len(self.all_photos())
         total_num_photos = sum(global_photog_counts.values()) # yep, photog.
-        print total_num_photos
         for tag in set(tag_counts.keys()):
             tf = tag_counts[tag] * 1.0 / this_cluster_num_photos
             idf = total_num_photos * 1.0 / global_tag_counts[tag]
@@ -182,18 +186,62 @@ class Cluster:
         points = self.all_points()
         xs = [pt[1] for pt in points]
         ys = [pt[0] for pt in points]
-        print np.std(xs)
-        print np.std(ys)
         sigma = math.sqrt(math.pow(np.std(xs), 2) + math.pow(np.std(ys), 2))
         density = 1.0 / (1.0 + sigma)
         
         # Ignore image quality.
 
-        print "Tag disting: ", tag_disting
-        print "photog disting: ", photog_disting
-        print "density: ", density
         # Go with regular old average for now. Meh.
-        return (tag_disting + photog_disting + density) / 3.0
+        score = (tag_disting + photog_disting + density) / 3.0
+        return score
+
+    def pop_a_photo(self):
+        """ Returns a randomly selected photo from this cluster. Removes it
+        from this cluster."""
+        if self.subclusters == [] and self.photos == []:
+            return None
+        if self.subclusters == None:
+            return self.photos.pop(0)
+        else:
+            cluster_to_get = random.choice(self.subclusters)
+            photo = cluster_to_get.pop_a_photo()
+            if len(cluster_to_get.all_photos()) == 0:
+                self.subclusters.remove(cluster_to_get)
+            return photo
+
+    def photo_order(self, global_tag_counts, global_photog_counts):
+        """ The end goal of this thing! Returns an order of photos in this
+        cluster."""
+        if self.subclusters == None:
+            if len(self.photos) != 1:
+                print "There should only be one photo here."
+            return self.photos # which I think will always have 1 element?
+
+        order = []
+        # First do the Head. find the "prominent" subclusters.
+        subcluster_scores = {sc: sc.score(global_tag_counts, global_photog_counts) for sc in self.subclusters}
+        subcluster_scores = sorted(subcluster_scores.items(), key=lambda x: -x[1])
+        total_score = sum([x[1] for x in subcluster_scores])
+        for subcluster, score in subcluster_scores:
+            if score / total_score >= self.w_param:
+                # it's "prominent"!
+                # we would take the "most relevant" photo, but we don't have a
+                # measure of relevance, so w/e.
+                order.append(subcluster.pop_a_photo())
+
+        # Now do the Tail.
+        while len(self.all_photos()) > 0:
+            subcluster_scores = {sc: sc.score(global_tag_counts, global_photog_counts) for sc in self.subclusters}
+            subcluster_scores = sorted(subcluster_scores.items(), key=lambda x: -x[1])
+            total_score = sum([x[1] for x in subcluster_scores])
+            random_pick = random.random() * total_score
+            for subcluster, score in subcluster_scores:
+                if random_pick < score:
+                    order.append(subcluster.pop_a_photo())
+                    continue
+                else:
+                    random_pick -= score
+        return order
 
 munkres = Munkres()
 
@@ -201,7 +249,6 @@ lines = [line for line in csv.reader(open(args.yfcc_file))]
 for line in lines:
     line[2] = float(line[2])
     line[3] = float(line[3])
-# pts = [(float(line[2]), float(line[3])) for line in lines]
 
 clusters = collections.defaultdict(list) # dict of iteration number -> cluster list.
 clusters[0] = [Cluster(subclusters=None, photos=[photo]) for photo in lines]
@@ -215,10 +262,8 @@ while True:
     for cluster_cycle in cluster_cycle_indexes:
         new_cluster = Cluster(subclusters=[clusters[i][c] for c in cluster_cycle], photos=[])
         new_clusters.append(new_cluster)
-        # new_clusters.append(flatten([clusters[i][c] for c in cluster_cycle]))
 
     print "Finished a round, this many clusters: ", len(new_clusters)
-    # print [len(a.subclusters) for a in new_clusters]
     if is_all_singletons(cluster_cycle_indexes):
         break
     i += 1
@@ -232,8 +277,8 @@ for photo in lines:
     global_tag_counts.update([tag for tag in tag_set if is_ok_tag(tag)])
 global_photog_counts = collections.Counter([photo[1] for photo in lines])
 
-for cluster in final_clusters:
-    print cluster.score(global_tag_counts, global_photog_counts)
+supercluster = Cluster(subclusters=final_clusters, photos=[])
+print supercluster.photo_order(global_tag_counts, global_photog_counts)
 
 if args.plot:
     ## Just plotting this stuff.
@@ -245,8 +290,8 @@ if args.plot:
         ctr += 1
         color = ctr
         for pt in cluster.all_points():
-            xs.append(pt[0])#* 100 + random.random())
-            ys.append(pt[1])#* 100 + random.random())
+            xs.append(pt[0])
+            ys.append(pt[1])
             colors.append(color)
 
     plt.scatter(xs, ys, c=colors)
