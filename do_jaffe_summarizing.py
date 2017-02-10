@@ -4,7 +4,7 @@
 # Hungarian clustering from Goldberger:
 # http://www.openu.ac.il/personal_sites/tamirtassa/download/journals/clustering.pdf
 
-import argparse, csv, collections, math, sys, random
+import argparse, csv, collections, math, sys, random, numpy as np
 import matplotlib.pyplot as plt
 from haversine import haversine
 from munkres import Munkres # Hungarian clustering.
@@ -27,12 +27,14 @@ def cluster_dist(c1, c2):
     """ Distance between 2 clusters, as Goldberger and Tassa describe. c1 and
     c2 are both Cluster objects. """
     min_dist = sys.maxint
+    
     for pt1 in c1.all_points():
         for pt2 in c2.all_points():
             if dist(pt1, pt2) < min_dist:
                 min_dist = dist(pt1, pt2)
                 closest_pt1 = pt1
                 closest_pt2 = pt2
+    
     # Check if there are at least T points in either cluster close enough.
     pts_close_enough1 = 0
     for pt in c1.all_points():
@@ -105,25 +107,104 @@ def is_all_singletons(cycles):
             return False
     return True
 
+def is_ok_tag(tag):
+    if 'nikon' in tag or 'canon' in tag or 'sony' in tag or 'f%2F' in tag\
+            or 'filter' in tag or '+mm' in tag or '0mm' in tag:
+        return False
+    if tag.isdigit():
+        return False
+    if tag in ['square', 'no+flash', 'instagram+app', 'square+format',\
+            'iphoneography', 'photoshop', 'illustrator', 'hdr', 'iphoto+original']:
+        return False
+    return True
+
+
 class Cluster:
     """ Represents a cluster of photos, a la Hungarian clustering. """
-    def __init__(self, subclusters, points):
+    def __init__(self, subclusters, photos):
         self.subclusters = subclusters
-        self.points = points
+        self.photos = photos
 
     def all_points(self):
         if self.subclusters == None:
-            return self.points
+            return [(photo[2], photo[3]) for photo in self.photos]
         else:
             return flatten([subcluster.all_points() for subcluster in self.subclusters])
+
+    def all_photos(self):
+        if self.subclusters == None:
+            return self.photos
+        else:
+            return flatten([subcluster.all_photos() for subcluster in self.subclusters])
+
+    def tag_counts(self):
+        """ Returns a Counter of each tag here and how often it is used. """
+        tag_sets = [photo[5] for photo in self.all_photos()]
+        tag_counter = collections.Counter()
+        for tag_set in tag_sets:
+            tags = tag_set.strip('"').split(',')
+            tag_counter.update([tag for tag in tags if is_ok_tag(tag)])
+        return tag_counter 
+
+    def photog_counts(self):
+        """ Returns a Counter of how often each NSID occurs in the dataset."""
+        return collections.Counter([photo[1] for photo in self.all_photos()])
+
+
+    def score(self, global_tag_counts, global_photog_counts):
+        """ Just the score for this cluster, as in Jaffe et al. Need
+        global_tag_counts to compute tf-idf."""
+
+        # Ignore relevance
+
+        # Tag-distinguishability
+        tfidfs = []
+        tag_counts = self.tag_counts()
+        this_cluster_num_photos = len(self.all_photos())
+        total_num_photos = sum(global_photog_counts.values()) # yep, photog.
+        print total_num_photos
+        for tag in set(tag_counts.keys()):
+            tf = tag_counts[tag] * 1.0 / this_cluster_num_photos
+            idf = total_num_photos * 1.0 / global_tag_counts[tag]
+            tfidfs.append(tf * math.log(idf))
+        tag_disting = math.sqrt(sum([math.pow(x, 2) for x in tfidfs]))
+
+        # Photographer-distinguishability
+        photog_tfidfs = []
+        photog_counts = self.photog_counts()
+        for photographer in photog_counts.keys():
+            tf = photog_counts[photographer] * 1.0 / this_cluster_num_photos
+            idf = total_num_photos * 1.0 / global_photog_counts[photographer]
+            photog_tfidfs.append(tf * math.log(idf))
+        photog_disting = math.sqrt(sum([math.pow(x, 2) for x in photog_tfidfs]))
+
+        # Density
+        points = self.all_points()
+        xs = [pt[1] for pt in points]
+        ys = [pt[0] for pt in points]
+        print np.std(xs)
+        print np.std(ys)
+        sigma = math.sqrt(math.pow(np.std(xs), 2) + math.pow(np.std(ys), 2))
+        density = 1.0 / (1.0 + sigma)
+        
+        # Ignore image quality.
+
+        print "Tag disting: ", tag_disting
+        print "photog disting: ", photog_disting
+        print "density: ", density
+        # Go with regular old average for now. Meh.
+        return (tag_disting + photog_disting + density) / 3.0
 
 munkres = Munkres()
 
 lines = [line for line in csv.reader(open(args.yfcc_file))]
-pts = [(float(line[2]), float(line[3])) for line in lines]
+for line in lines:
+    line[2] = float(line[2])
+    line[3] = float(line[3])
+# pts = [(float(line[2]), float(line[3])) for line in lines]
 
 clusters = collections.defaultdict(list) # dict of iteration number -> cluster list.
-clusters[0] = [Cluster(subclusters=None, points=[pt]) for pt in pts]
+clusters[0] = [Cluster(subclusters=None, photos=[photo]) for photo in lines]
 i = 0
 while True:
     new_clusters = []
@@ -132,7 +213,7 @@ while True:
     cluster_cycle_indexes = make_cluster_cycles(indexes)
 
     for cluster_cycle in cluster_cycle_indexes:
-        new_cluster = Cluster(subclusters=[clusters[i][c] for c in cluster_cycle], points=[])
+        new_cluster = Cluster(subclusters=[clusters[i][c] for c in cluster_cycle], photos=[])
         new_clusters.append(new_cluster)
         # new_clusters.append(flatten([clusters[i][c] for c in cluster_cycle]))
 
@@ -144,6 +225,15 @@ while True:
     clusters[i] = new_clusters
 
 final_clusters = clusters[len(clusters)-1]
+
+global_tag_counts = collections.Counter()
+for photo in lines:
+    tag_set = photo[5].strip('"').split(',')
+    global_tag_counts.update([tag for tag in tag_set if is_ok_tag(tag)])
+global_photog_counts = collections.Counter([photo[1] for photo in lines])
+
+for cluster in final_clusters:
+    print cluster.score(global_tag_counts, global_photog_counts)
 
 if args.plot:
     ## Just plotting this stuff.
