@@ -52,19 +52,26 @@ for city in ALL_CITIES:
                 output[city][nghd]['streetview_venues'].append(
                         'images/'+city+'/venues_streetview/'+photo)
 
+# Get flickr_random and flickr_selected_tags photos.
+urls_nsids = {}
 for city in ALL_CITIES:
     print "Reading Flickr photos for " + city
     flickr_photos = collections.defaultdict(list)
     flickr_good_photos = collections.defaultdict(list)
     for line in csv.reader(open(args.data_directory + city + '_yfcc100m.csv')):
+        nsid = line[1]
         url = line[4]
-        tags = ast.literal_eval(line[5])
-        nghd = line[7]
+        if line[5] == '':
+            tags = []
+        else:
+            tags = line[5].split(',')
+        nghd = line[8]
         if nghd != 'None':
             flickr_photos[nghd].append(url)
             # Here's where you put criteria for the "selected tags".
-            if 'outdoor' in tags:
-                flickr_good_photos[nghd].append(url)
+            # if 'outdoor' in tags: # nah let's just take all
+            flickr_good_photos[nghd].append(url)
+            urls_nsids[url] = nsid
 
     for nghd, urls in flickr_photos.iteritems():
         if len(urls) < 50:
@@ -73,11 +80,29 @@ for city in ALL_CITIES:
             output[city][nghd]['flickr_random'] = random.sample(urls, 50)
 
     for nghd, urls in flickr_good_photos.iteritems():
-        if len(urls) < 50:
-            output[city][nghd]['flickr_selected_tags'] = urls
-        else:
-            output[city][nghd]['flickr_selected_tags'] = random.sample(urls, 50)
-
+        nsids_seen = set()
+        good_urls = []
+        random.shuffle(urls)
+        # Take 50 of these URLs, but only one per photographer.
+        for url in urls:
+            nsid = urls_nsids[url]
+            if nsid not in nsids_seen:
+                nsids_seen.add(nsid)
+                good_urls.append(url)
+                if len(good_urls) >= 50:
+                    break
+        output[city][nghd]['flickr_selected_tags'] = good_urls
+        
+# ok now get the flickr_jaffe photos.
+for city in ALL_CITIES:
+    nghd_urls = collections.defaultdict(list)
+    print "Reading Jaffe photo orderings for " + city
+    for line in csv.reader(open(args.data_directory + 'jaffe_' + city + '.csv')):
+        nghd = line[8]
+        url = line[4]
+        nghd_urls[nghd].append(url)
+    for nghd, urls in nghd_urls.items():
+        output[city][nghd]['flickr_jaffe'] = urls[0:10]
 
 
 json.dump(output, open(args.output_file, 'w'), indent=2)
