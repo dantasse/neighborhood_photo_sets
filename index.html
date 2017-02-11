@@ -14,6 +14,10 @@
 #user_number {
   font-size: large;
 }
+.photo {
+  width:300px;
+  height:150px;
+}
 </style>
 
     <!-- Bootstrap -->
@@ -150,11 +154,14 @@
     // Types: 0 = twitter random, 1 = street view random, 2 = street view at
     // venues, 3 = flickr random, 4 = flickr with only "outdoor" photos,
     // 5 = flickr with TF-iDF-UF of some kind.
-    var get_urls = function(type) {
-      
+    var typeMap = {0: 'twitter_random', 1: 'streetview_random', 2: 'streetview_venues',
+      3: 'flickr_random', 4: 'flickr_selected_tags', 5: 'flickr_jaffe'}
+    var getUrls = function(city, nghd, photo_type) {
+      return urls[city][nghd][photo_type]
     }
 
     var prepare_photos = function() {
+      console.log(comparisonsToDo)
       var comparisonToDo = comparisonsToDo.splice(Math.floor(Math.random() * comparisonsToDo.length), 1)[0]
       // splice also removes it from the list.
       if (Math.random() > 0.5) {
@@ -165,7 +172,20 @@
         secondSet = comparisonToDo[0]
       }
       // so now firstSet = 3 and secondSet = 2 or something.
-      
+      console.log("firstSet: " + typeMap[firstSet])
+      console.log("secondSet: " + typeMap[secondSet])
+      urls1 = getUrls(selectedCity, selectedNghd, typeMap[firstSet]).slice(0, 10)
+      urls2 = getUrls(selectedCity, selectedNghd, typeMap[secondSet]).slice(0, 10)
+      $("#photos_1").empty()
+      $("#photos_2").empty()
+      for (var i = 0; i < 10; i++) {
+        if (i < urls1.length) {
+          $("#photos_1").append('<img class="photo" src="' + urls1[i] + '"/>')
+        }
+        if (i < urls2.length) {
+          $("#photos_2").append('<img class="photo" src="' + urls2[i] + '"/>')
+        }
+      }
 
     }
     var select_photos = function(group_num) {

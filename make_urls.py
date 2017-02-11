@@ -30,7 +30,7 @@ for city in ALL_CITIES:
     print "Reading Twitter photos for: " + city
     for line in csv.reader(open(args.data_directory + 'tweet_' + city + '_images.csv')):
         nghd = line[7]
-        if nghd != 'None':
+        if nghd != 'None' and 'twimg' not in line[8]: # TODO for now excluding twimg links b/c many are broken
             twitter_photos[nghd].append(line[8])
     for nghd, urls in twitter_photos.iteritems():
         if len(urls) < 50:
