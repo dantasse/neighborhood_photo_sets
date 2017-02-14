@@ -92,6 +92,9 @@
           Thank you for participating in this study. Please enter this number:
           <div id="user_number"></div>
           into Mechanical Turk in order to receive credit for completing this HIT.
+          <div id="error_boilerplate" style="display:none"><b>Some of your answers were not recorded.</b> Don't worry, you'll still get credit for completing this HIT. But please copy and paste the following into the 'Error Text' box on the HIT in Mechanical Turk:
+            <div id="error_info"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -115,6 +118,7 @@
     $.getJSON("data/urls.json", function(json) {
       urls = json
     })
+    var userLog = [] // Build this up if the AJAX requests start failing. 
 
     var update_nghd_selector = function() {
       $("#nghd_selector").empty()
@@ -133,7 +137,6 @@
       selectedNghd = $("#nghd_selector").val()
       if (selectedCity === 'none' || selectedNghd === 'none') {
         $("#select_city_nghd_warning").show()
-        console.log("Please select a city and neighborhood.")
         return false
       }
       
@@ -149,6 +152,12 @@
       $("#main").hide()
       $("#user_number").text(userNumber)
       $("#end").show()
+
+      if (userLog.length > 0) {
+        $("#error_boilerplate").show()
+        var errorText = JSON.stringify(userLog)
+        $("#error_info").text(errorText)
+      }
     }
 
     // Types: 0 = twitter random, 1 = street view random, 2 = street view at
@@ -161,7 +170,6 @@
     }
 
     var prepare_photos = function() {
-      console.log(comparisonsToDo)
       var comparisonToDo = comparisonsToDo.splice(Math.floor(Math.random() * comparisonsToDo.length), 1)[0]
       // splice also removes it from the list.
       if (Math.random() > 0.5) {
@@ -172,8 +180,6 @@
         secondSet = comparisonToDo[0]
       }
       // so now firstSet = 3 and secondSet = 2 or something.
-      console.log("firstSet: " + typeMap[firstSet])
-      console.log("secondSet: " + typeMap[secondSet])
       urls1 = getUrls(selectedCity, selectedNghd, typeMap[firstSet]).slice(0, 10)
       urls2 = getUrls(selectedCity, selectedNghd, typeMap[secondSet]).slice(0, 10)
       $("#photos_1").empty()
@@ -189,8 +195,23 @@
 
     }
     var select_photos = function(group_num) {
-      console.log("you selected " + group_num)
       numCompleted += 1
+
+      if (group_num === 1) {
+        winner = typeMap[firstSet]
+        loser = typeMap[secondSet]
+      } else if (group_num === 2) {
+        winner = typeMap[secondSet]
+        loser = typeMap[firstSet]
+      }
+      var params = {'winner': winner, 'loser': loser, 'city': selectedCity,
+        'neighborhood': selectedNghd, 'user': userNumber,
+        'winner_position': group_num, 'num_completed': numCompleted}
+      $.ajax({url: 'https://script.google.com/macros/s/AKfycbwo53FphJlEQYw8wk98_B6DrX73G2SqLHUhwBIunrhQti5INT8s/exec',
+        type: 'post',
+        data: params}).fail(function () {
+          userLog.push(params)
+        })
       if (numCompleted >= 15) {
         done()
       } else {
@@ -198,7 +219,6 @@
         prepare_photos()
       }
     }
-    // $(document).ready(function() {})  
   </script>
   </body>
 </html>
