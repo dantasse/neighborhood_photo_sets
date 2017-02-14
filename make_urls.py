@@ -44,11 +44,11 @@ for city in ALL_CITIES:
     for nghd in output[city]:
         nghd_sanitized = nghd.replace("/", "-")
         for photo in os.listdir('images/' + city + '/streetview/'):
-            if photo.startswith(nghd_sanitized):
+            if photo.startswith(nghd_sanitized + "_"): # So like all the Mission photos start with Mission_.
                 output[city][nghd]['streetview_random'].append(
                         'images/'+city+'/streetview/'+photo)
         for photo in os.listdir('images/' + city + '/venues_streetview/'):
-            if photo.startswith(nghd_sanitized):
+            if photo.startswith(nghd_sanitized + "_"):
                 output[city][nghd]['streetview_venues'].append(
                         'images/'+city+'/venues_streetview/'+photo)
 
