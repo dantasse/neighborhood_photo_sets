@@ -39,9 +39,52 @@
       </div>
       <div class="row">
         <div class="col-md-12">
-          Thank you for your interest in this study. Please pick a neighborhood that you have lived in or are very familiar with. We will then give you two sets of photos; you simply select the one that you think better represents your neighborhood. Rate 15 pairs of photo sets to complete this HIT.
+          <p>Thank you for your interest in this study. This is part of a research study conducted by Dan Tasse at Carnegie Mellon University and is funded by Yahoo Inc.</p> 
+          <p>The purpose of the research is to understand how we can accurately compare neighborhoods using social media and other data sources.</p>
+ 
+          <h3>Procedures</h3>
+          <p>
+After telling us which city and neighborhood you know well, we will present you with sets of photos from that neighborhood. We will ask you which set of photos better represents that neighborhood. After you complete 15 comparisons of photo sets, we will give you a code to put into Mechanical Turk to show that you have completed the task.
+          </p>
+ 
+          <h3>Participant Requirements</h3>
+          <p>Participation in this study is limited to individuals age 18 and older who have lived in, or otherwise are very familiar with, one of the following cities: Pittsburgh, San Francisco, Houston, Austin, and Chicago</p>
+ 
+          <h3>Risks</h3>
+          <p>The risks and discomfort associated with participation in this study are no greater than those ordinarily encountered in daily life or during other online activities.</p>
+ 
+          <h3>Benefits</h3>
+          <p>There may be no personal benefit (besides monetary compensation) from your participation in the study but the knowledge received may be of value to humanity.</p>
+ 
+          <h3>Compensation and Costs</h3>
+          <p>You will be paid $1.00 for completing this task. If you do not complete the task, you will not be paid for partial completion.</p>
+ 
+          <h3>Confidentiality</h3>
+          <p>The data captured for the research does not include any personally identifiable information about you.  Your IP address will not be captured.</p>
 
-          <div>
+          <h3>Right to Ask Questions and Contact Information</h3>
+          If you have any questions about this study, you should feel free to ask them by contacting the Principal Investigator:<br>
+          Dan Tasse, PhD Candidate<br>
+          Human-Computer Interaction Department<br>
+          5000 Forbes Ave, Pittsburgh, PA 15213<br>
+          412-532-6827<br>
+          dantasse@cmu.edu<br>
+          <p>If you have questions later, desire additional information, or wish to withdraw your participation please contact the Principal Investigator by mail, phone or e-mail in accordance with the contact information listed above.</p>
+ 
+          <p>If you have questions pertaining to your rights as a research participant; or to report concerns to this study, you should contact the Office of Research integrity and Compliance at Carnegie Mellon University.  Email: irb-review@andrew.cmu.edu. Phone: 412-268-1901 or 412-268-5460.</p>
+ 
+<h3>Voluntary Participation</h3>
+<p>Your participation in this research is voluntary.  You may discontinue participation at any time during the research activity.</p>
+ 
+<ul style="list-style-type:none">
+  <li><input type="checkbox" id="age_18" /> <label for="age_18">I am age 18 or older.</label></li>
+  <li><input type="checkbox" id="read_and_understand" /> <label for="read_and_understand">I have read and understand the information above.</label></li>
+  <li><input type="checkbox" id="want_to_participate" /> <label for="want_to_participate">I want to participate in this research and continue with the survey.</label></li>
+  <li><input type="checkbox" id="have_lived_in" /> <label for="have_lived_in">I have lived in, or otherwise am very familiar with, at least one of the following cities: Pittsburgh, San Francisco, Houston, Austin, Chicago</label></li>
+</ul>
+
+<p>Which city and neighborhood do you know well?</p>
+          <div style="padding: 5px;">
             <select id="city_selector" onchange="update_nghd_selector()">
               <option value="none">Select a city</option>
               <option id="austin" value="austin">Austin</option>
@@ -52,14 +95,15 @@
             </select>
           </div>
 
-          <div>
+          <div style="padding: 5px;">
             <select id="nghd_selector">
               <option value="none">Select a neighborhood (select a city first)</option>
             </select>
           </div>
 
+          <div id="check_boxes_warning" style="color:red; display:none;">You must agree to the terms in order to continue with this study.</div>
           <div id="select_city_nghd_warning" style="color:red; display:none;">Please select a city and neighborhood</div>
-          <div><button id="start_button" onclick="start()">Start</button></div>
+          <div style="padding: 5px;"><button id="start_button" onclick="start()">Start</button></div>
         </div>
       </div>
     </div>
@@ -136,8 +180,15 @@
       }
     }
     var start = function() {
+      $("#check_boxes_warning").hide()
+      $("#select_city_nghd_warning").hide()
       selectedCity = $("#city_selector").val()
       selectedNghd = $("#nghd_selector").val()
+      if (!($("#age_18").is(":checked") && $("#read_and_understand").is(":checked") &&
+        $("#want_to_participate").is(":checked") && $("#have_lived_in").is(":checked"))) {
+        $("#check_boxes_warning").show()
+        return false
+      }
       if (selectedCity === 'none' || selectedNghd === 'none') {
         $("#select_city_nghd_warning").show()
         return false
